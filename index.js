@@ -13,9 +13,10 @@ const io = socketIo(server, {
   cors: {
     origin: [
       "http://localhost:3000",
-      "https://aman25072025.github.io/groupVideoReact"
+      "https://aman25072025.github.io"
     ],
-    methods: ["GET", "POST"]
+    methods: ["GET", "POST"],
+    credentials: true
   }
 });
 
