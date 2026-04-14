@@ -1,0 +1,20 @@
+services:
+  # Backend Service
+  - type: web
+    name: video-call-server
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 8000
+    # Add UDP port range for MediaSoup
+    network:
+      forwardedPorts:
+        - 8000
+        # MediaSoup UDP ports (Note: Render Free plan may not support UDP)
+        # Consider upgrading to Starter plan for full WebRTC support
