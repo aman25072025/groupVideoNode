@@ -12,8 +12,13 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies (skip postinstall scripts that cause issues)
-RUN npm ci --only=production --ignore-scripts
+# Install dependencies
+RUN npm ci --only=production
+
+# Build MediaSoup worker from source
+RUN cd node_modules/mediasoup/worker && \
+    npm run build:worker && \
+    cd ../../
 
 # Copy source code
 COPY . .
