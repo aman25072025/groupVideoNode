@@ -12,8 +12,8 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Install dependencies (skip postinstall scripts that cause issues)
+RUN npm ci --only=production --ignore-scripts
 
 # Copy source code
 COPY . .
