@@ -1,16 +1,4 @@
-FROM node:18-alpine
-
-# Install MediaSoup dependencies and build tools
-RUN apk add --no-cache \
-    python3 \
-    make \
-    g++ \
-    linux-headers \
-    gcc \
-    pkgconfig \
-    pixman-dev \
-    libx11-dev \
-    libxtst-dev
+FROM node:18
 
 WORKDIR /app
 
@@ -20,21 +8,8 @@ COPY package*.json ./
 # Install dependencies
 RUN npm ci --only=production
 
-# Build MediaSoup worker from source
-RUN cd node_modules/mediasoup/worker && \
-    npm run build:worker && \
-    cd ../../
-
 # Copy source code
 COPY . .
-
-# Create non-root user
-RUN addgroup -g 1001 -S nodejs
-RUN adduser -S nodejs -u 1001
-
-# Change ownership
-RUN chown -R nodejs:nodejs /app
-USER nodejs
 
 # Expose ports
 EXPOSE 8000
