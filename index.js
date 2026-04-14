@@ -53,7 +53,8 @@ io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
 
   socket.on('create-room', async (data) => {
-    const roomId = uuidv4();
+    // Generate 5-digit room ID
+    const roomId = Math.floor(10000 + Math.random() * 90000).toString();
     rooms.set(roomId, {
       id: roomId,
       participants: new Map(),
