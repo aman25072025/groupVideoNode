@@ -1,11 +1,16 @@
 FROM node:18-alpine
 
-# Install MediaSoup dependencies
+# Install MediaSoup dependencies and build tools
 RUN apk add --no-cache \
     python3 \
     make \
     g++ \
-    linux-headers
+    linux-headers \
+    gcc \
+    pkgconfig \
+    pixman-dev \
+    libx11-dev \
+    libxtst-dev
 
 WORKDIR /app
 
