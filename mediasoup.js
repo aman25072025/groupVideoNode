@@ -7,6 +7,7 @@ const config = {
     logLevel: 'warn',
     logTags: ['info', 'ice', 'dtls']
   },
+
   router: {
     mediaCodecs: [
       {
@@ -22,11 +23,12 @@ const config = {
       }
     ]
   },
+
   webRtcTransport: {
     listenIps: [
       {
         ip: '0.0.0.0',
-        announcedIp: 'YOUR_PUBLIC_IP_OR_DOMAIN' // 🔥 REQUIRED in production
+        announcedIp: process.env.ANNOUNCED_IP || null // ✅ FIXED
       }
     ],
     enableUdp: true,
