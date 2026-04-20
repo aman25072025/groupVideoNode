@@ -9,102 +9,58 @@ const { createWorkers, createRouter, createWebRtcTransport } = require('./medias
 
 const app = express();
 const server = http.createServer(app);
+
 const io = socketIo(server, {
   cors: {
     origin: "*",
-    methods: ["GET", "POST", "OPTIONS"],
-    credentials: false
+    methods: ["GET", "POST"]
   },
-  pingTimeout: 60000,
-  pingInterval: 25000,
-  transports: ['polling'],
-  allowEIO3: true,
-  maxHttpBufferSize: 1e8
+  transports: ['websocket'], // ✅ FIXED
 });
 
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../client/build')));
 
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.status(200).json({
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-    rooms: rooms.size,
-    participants: participants.size
-  });
-});
-
-// Store active rooms and participants
 const rooms = new Map();
 const participants = new Map();
 
-// MediaSoup workers
 let workers = [];
 let router;
 
 async function initializeMediaSoup() {
-  try {
-    console.log('Initializing MediaSoup...');
-    workers = await createWorkers();
-    if (workers.length > 0) {
-      router = await createRouter(workers[0]);
-      console.log('MediaSoup initialized successfully');
-    } else {
-      console.warn('No MediaSoup workers created - running in basic mode');
-    }
-  } catch (error) {
-    console.error('Failed to initialize MediaSoup:', error);
-    console.warn('Running without MediaSoup - video features will be limited');
-  }
+  workers = await createWorkers();
+  router = await createRouter(workers[0]);
+  console.log('MediaSoup ready');
 }
 
-// Socket.io connection handling
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
 
-  socket.on('create-room', async (data) => {
-    // Generate 5-digit room ID
+  socket.on('create-room', () => {
     const roomId = Math.floor(10000 + Math.random() * 90000).toString();
+
     rooms.set(roomId, {
       id: roomId,
       participants: new Map(),
-      router: router || null
+      router
     });
 
     socket.join(roomId);
     socket.emit('room-created', { roomId });
-    console.log('Room created:', roomId, router ? 'with MediaSoup' : 'without MediaSoup');
   });
 
-  socket.on('get-router-rtp-capabilities', async (data, callback) => {
-    const { roomId } = data;
+  socket.on('get-router-rtp-capabilities', ({ roomId }, callback) => {
     const room = rooms.get(roomId);
-
-    if (!room) {
-      callback({ error: 'Room not found' });
-      return;
-    }
-
-    if (!room.router) {
-      callback({ error: 'MediaSoup router not available' });
-      return;
-    }
-
-    callback(room.router.rtpCapabilities);
+    callback(room?.router?.rtpCapabilities || {});
   });
 
-  socket.on('join-room', async (data) => {
-    const { roomId, userName } = data;
+  socket.on('join-room', ({ roomId, userName }) => {
     const room = rooms.get(roomId);
-
-    if (!room) {
-      socket.emit('error', { message: 'Room not found' });
-      return;
-    }
+    if (!room) return socket.emit('error', { message: 'Room not found' });
 
     const participantId = uuidv4();
+
     const participant = {
       id: participantId,
       name: userName,
@@ -120,212 +76,151 @@ io.on('connection', (socket) => {
     socket.join(roomId);
     socket.emit('room-joined', { roomId, participantId });
 
-    // Notify other participants
     socket.to(roomId).emit('participant-joined', { participantId, userName });
 
-    // Notify new participant about existing producers
-    room.participants.forEach((existingParticipant, existingId) => {
-      if (existingId !== participantId) {
-        existingParticipant.producers.forEach((producer, producerId) => {
-          socket.emit('new-producer', {
-            producerId,
-            participantId: existingId,
-            kind: producer.kind
-          });
+    console.log(`${userName} joined ${roomId}`);
+  });
+
+  // ✅ NEW: get existing producers
+  socket.on('get-producers', ({ roomId }, callback) => {
+    const room = rooms.get(roomId);
+    if (!room) return callback([]);
+
+    const list = [];
+
+    room.participants.forEach((p, pid) => {
+      p.producers.forEach(prod => {
+        list.push({
+          producerId: prod.id,
+          participantId: pid
         });
-      }
+      });
     });
 
-    console.log(`Participant ${userName} joined room ${roomId}`);
+    callback(list);
   });
 
-  socket.on('leave-room', (data) => {
-    const { roomId, participantId } = data;
-    const room = rooms.get(roomId);
-
-    if (room && room.participants.has(participantId)) {
-      const participant = room.participants.get(participantId);
-
-      // Close all transports
-      participant.transports.forEach(transport => {
-        if (transport.close) transport.close();
-      });
-
-      room.participants.delete(participantId);
-      participants.delete(socket.id);
-
-      socket.to(roomId).emit('participant-left', { participantId });
-      socket.leave(roomId);
-
-      console.log(`Participant ${participantId} left room ${roomId}`);
-    }
-  });
-
-  socket.on('create-transport', async (data, callback) => {
-    const { roomId, participantId, direction } = data;
+  socket.on('create-transport', async ({ roomId, participantId, direction }, callback) => {
     const room = rooms.get(roomId);
     const participant = room?.participants.get(participantId);
 
-    if (!participant) {
-      callback({ error: 'Participant not found' });
-      return;
-    }
+    if (!participant) return callback({ error: 'Participant not found' });
 
-    if (!room.router) {
-      callback({ error: 'MediaSoup not available - video features disabled' });
-      return;
-    }
+    const transport = await createWebRtcTransport(room.router);
+
+    participant.transports.set(transport.id, transport);
+
+    callback({
+      id: transport.id,
+      iceParameters: transport.iceParameters,
+      iceCandidates: transport.iceCandidates,
+      dtlsParameters: transport.dtlsParameters
+    });
+  });
+
+  // ✅ FIXED (callback added)
+  socket.on('connect-transport', async (data, callback) => {
+    const { roomId, participantId, transportId, dtlsParameters } = data;
+
+    const transport = rooms
+      .get(roomId)
+      ?.participants.get(participantId)
+      ?.transports.get(transportId);
+
+    if (!transport) return callback({ error: 'Transport not found' });
 
     try {
-      const transport = await createWebRtcTransport(room.router, direction);
-      participant.transports.set(transport.id, transport);
-
-      callback({
-        id: transport.id,
-        iceParameters: transport.iceParameters,
-        iceCandidates: transport.iceCandidates,
-        dtlsParameters: transport.dtlsParameters
-      });
-    } catch (error) {
-      console.error('Failed to create transport:', error);
-      callback({ error: 'Failed to create transport' });
-    }
-  });
-
-  socket.on('connect-transport', async (data) => {
-    const { roomId, participantId, transportId, dtlsParameters } = data;
-    const room = rooms.get(roomId);
-    const participant = room?.participants.get(participantId);
-    const transport = participant?.transports.get(transportId);
-
-    if (transport) {
       await transport.connect({ dtlsParameters });
+      callback({ connected: true });
+    } catch (err) {
+      callback({ error: 'Connect failed' });
     }
   });
 
   socket.on('produce', async (data, callback) => {
     const { roomId, participantId, transportId, kind, rtpParameters } = data;
-    const room = rooms.get(roomId);
-    const participant = room?.participants.get(participantId);
+
+    const participant = rooms
+      .get(roomId)
+      ?.participants.get(participantId);
+
     const transport = participant?.transports.get(transportId);
 
-    if (!transport) {
-      callback({ error: 'Transport not found' });
-      return;
-    }
+    if (!transport) return callback({ error: 'Transport not found' });
 
-    try {
-      const producer = await transport.produce({ kind, rtpParameters });
-      participant.producers.set(producer.id, producer);
+    const producer = await transport.produce({ kind, rtpParameters });
 
-      callback({ id: producer.id });
+    participant.producers.set(producer.id, producer);
 
-      // Notify other participants
-      socket.to(roomId).emit('new-producer', {
-        producerId: producer.id,
-        participantId,
-        kind
-      });
-    } catch (error) {
-      console.error('Failed to produce:', error);
-      callback({ error: 'Failed to produce' });
-    }
+    callback({ id: producer.id });
+
+    socket.to(roomId).emit('new-producer', {
+      producerId: producer.id,
+      participantId,
+      kind
+    });
   });
 
   socket.on('consume', async (data, callback) => {
     const { roomId, participantId, producerId, transportId, rtpCapabilities } = data;
+
     const room = rooms.get(roomId);
     const participant = room?.participants.get(participantId);
     const transport = participant?.transports.get(transportId);
 
-    if (!transport) {
-      callback({ error: 'Transport not found' });
-      return;
-    }
+    if (!transport) return callback({ error: 'Transport not found' });
 
-    // Find producer
-    let producer = null;
-    for (const [pid, p] of room.participants) {
+    let producer;
+
+    room.participants.forEach(p => {
       if (p.producers.has(producerId)) {
         producer = p.producers.get(producerId);
-        break;
       }
-    }
+    });
 
-    if (!producer) {
-      callback({ error: 'Producer not found' });
-      return;
-    }
+    if (!producer) return callback({ error: 'Producer not found' });
 
-    try {
-      const canConsume = await router.canConsume({
-        producerId: producer.id,
-        rtpCapabilities
-      });
+    const canConsume = await room.router.canConsume({
+      producerId,
+      rtpCapabilities
+    });
 
-      if (!canConsume) {
-        callback({ error: 'Cannot consume' });
-        return;
-      }
+    if (!canConsume) return callback({ error: 'Cannot consume' });
 
-      const consumer = await transport.consume({
-        producerId: producer.id,
-        rtpCapabilities,
-        paused: false
-      });
+    const consumer = await transport.consume({
+      producerId,
+      rtpCapabilities,
+      paused: false
+    });
 
-      participant.consumers.set(consumer.id, consumer);
+    participant.consumers.set(consumer.id, consumer);
 
-      callback({
-        id: consumer.id,
-        producerId: producer.id,
-        kind: consumer.kind,
-        rtpParameters: consumer.rtpParameters
-      });
-    } catch (error) {
-      console.error('Failed to consume:', error);
-      callback({ error: 'Failed to consume' });
-    }
+    callback({
+      id: consumer.id,
+      producerId,
+      kind: consumer.kind,
+      rtpParameters: consumer.rtpParameters
+    });
   });
 
   socket.on('disconnect', () => {
-    console.log('Client disconnected:', socket.id);
+    const info = participants.get(socket.id);
+    if (!info) return;
 
-    const participantInfo = participants.get(socket.id);
-    if (participantInfo) {
-      const { roomId, participantId } = participantInfo;
-      const room = rooms.get(roomId);
+    const { roomId, participantId } = info;
+    const room = rooms.get(roomId);
 
-      if (room && room.participants.has(participantId)) {
-        const participant = room.participants.get(participantId);
-
-        // Close all transports
-        participant.transports.forEach(transport => {
-          if (transport.close) transport.close();
-        });
-
-        room.participants.delete(participantId);
-        socket.to(roomId).emit('participant-left', { participantId });
-      }
-
-      participants.delete(socket.id);
+    if (room) {
+      room.participants.delete(participantId);
+      socket.to(roomId).emit('participant-left', { participantId });
     }
-  });
-});
 
-// Serve React app
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../client/build', 'index.html'));
+    participants.delete(socket.id);
+  });
 });
 
 const PORT = process.env.PORT || 8000;
 
-async function startServer() {
-  await initializeMediaSoup();
-
-  server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-  });
-}
-
-startServer().catch(console.error);
+initializeMediaSoup().then(() => {
+  server.listen(PORT, () => console.log(`Server running on ${PORT}`));
+});
