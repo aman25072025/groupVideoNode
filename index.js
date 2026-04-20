@@ -17,12 +17,26 @@ const io = socketIo(server, {
     ],
     methods: ["GET", "POST"],
     credentials: true
-  }
+  },
+  pingTimeout: 60000,
+  pingInterval: 25000,
+  transports: ['websocket', 'polling'],
+  allowEIO3: true
 });
 
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../client/build')));
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    rooms: rooms.size,
+    participants: participants.size
+  });
+});
 
 // Store active rooms and participants
 const rooms = new Map();
