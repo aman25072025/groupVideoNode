@@ -107,7 +107,22 @@ io.on('connection', (socket) => {
 
     socket.join(roomId);
     socket.emit('room-joined', { roomId, participantId });
+
+    // Notify other participants
     socket.to(roomId).emit('participant-joined', { participantId, userName });
+
+    // Notify new participant about existing producers
+    room.participants.forEach((existingParticipant, existingId) => {
+      if (existingId !== participantId) {
+        existingParticipant.producers.forEach((producer, producerId) => {
+          socket.emit('new-producer', {
+            producerId,
+            participantId: existingId,
+            kind: producer.kind
+          });
+        });
+      }
+    });
 
     console.log(`Participant ${userName} joined room ${roomId}`);
   });
