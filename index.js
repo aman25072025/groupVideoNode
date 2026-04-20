@@ -11,17 +11,15 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
-    origin: [
-      "http://localhost:3000",
-      "https://aman25072025.github.io"
-    ],
-    methods: ["GET", "POST"],
-    credentials: true
+    origin: "*",
+    methods: ["GET", "POST", "OPTIONS"],
+    credentials: false
   },
   pingTimeout: 60000,
   pingInterval: 25000,
-  transports: ['websocket', 'polling'],
-  allowEIO3: true
+  transports: ['polling'],
+  allowEIO3: true,
+  maxHttpBufferSize: 1e8
 });
 
 app.use(cors());
