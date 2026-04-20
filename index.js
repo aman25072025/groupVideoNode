@@ -203,6 +203,17 @@ io.on('connection', (socket) => {
     });
   });
 
+  socket.on('resume-consumer', async ({ consumerId }) => {
+    for (const room of rooms.values()) {
+      for (const participant of room.participants.values()) {
+        const consumer = participant.consumers.get(consumerId);
+        if (consumer) {
+          await consumer.resume();
+        }
+      }
+    }
+  });
+
   socket.on('disconnect', () => {
     const info = participants.get(socket.id);
     if (!info) return;
