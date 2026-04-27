@@ -1,9 +1,17 @@
 const mediasoup = require('mediasoup');
 
+const rtcMinPort = Number(process.env.MEDIASOUP_MIN_PORT || 40000);
+const rtcMaxPort = Number(process.env.MEDIASOUP_MAX_PORT || 49999);
+const listenIp = process.env.LISTEN_IP || '0.0.0.0';
+const announcedIp = process.env.ANNOUNCED_IP || null;
+const enableUdp = process.env.MEDIASOUP_ENABLE_UDP !== 'false';
+const enableTcp = process.env.MEDIASOUP_ENABLE_TCP !== 'false';
+const preferUdp = process.env.MEDIASOUP_PREFER_UDP !== 'false';
+
 const config = {
   worker: {
-    rtcMinPort: 40000,
-    rtcMaxPort: 49999,
+    rtcMinPort,
+    rtcMaxPort,
     logLevel: 'warn',
     logTags: ['info', 'ice', 'dtls']
   },
@@ -27,13 +35,13 @@ const config = {
   webRtcTransport: {
     listenIps: [
       {
-        ip: '0.0.0.0',
-        announcedIp: process.env.ANNOUNCED_IP || null // ✅ FIXED
+        ip: listenIp,
+        announcedIp
       }
     ],
-    enableUdp: true,
-    enableTcp: true,
-    preferUdp: true
+    enableUdp,
+    enableTcp,
+    preferUdp
   }
 };
 
@@ -57,7 +65,7 @@ async function createRouter(worker) {
 async function createWebRtcTransport(router) {
   const transport = await router.createWebRtcTransport(config.webRtcTransport);
 
-  transport.on('dtlsstatechange', state => {
+  transport.on('dtlsstatechange', (state) => {
     if (state === 'closed') transport.close();
   });
 
