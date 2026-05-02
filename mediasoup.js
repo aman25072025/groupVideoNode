@@ -3,7 +3,7 @@ const mediasoup = require('mediasoup');
 const rtcMinPort = Number(process.env.MEDIASOUP_MIN_PORT || 40000);
 const rtcMaxPort = Number(process.env.MEDIASOUP_MAX_PORT || 49999);
 const listenIp = process.env.LISTEN_IP || '0.0.0.0';
-ANNOUNCED_IP = groupvideonode.onrender.com
+ANNOUNCED_IP = 'groupvideonode.onrender.com'
 
 const announcedIp = 'groupvideonode.onrender.com';
 const enableUdp = process.env.MEDIASOUP_ENABLE_UDP !== 'false';
