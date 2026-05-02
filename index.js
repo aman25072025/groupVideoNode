@@ -15,7 +15,7 @@ const io = socketIo(server, {
     origin: "*",
     methods: ["GET", "POST"]
   },
-  transports: ['websocket'], // ✅ FIXED
+  transports: ['polling', 'websocket']
 });
 
 app.use(cors());
@@ -190,7 +190,7 @@ io.on('connection', (socket) => {
     const consumer = await transport.consume({
       producerId,
       rtpCapabilities,
-      paused: false
+      paused: true
     });
 
     participant.consumers.set(consumer.id, consumer);
@@ -203,15 +203,17 @@ io.on('connection', (socket) => {
     });
   });
 
-  socket.on('resume-consumer', async ({ consumerId }) => {
+  socket.on('resume-consumer', async ({ consumerId }, callback) => {
     for (const room of rooms.values()) {
       for (const participant of room.participants.values()) {
         const consumer = participant.consumers.get(consumerId);
         if (consumer) {
           await consumer.resume();
+          return callback && callback({ resumed: true });
         }
       }
     }
+    callback && callback({ error: 'Consumer not found' });
   });
 
   socket.on('disconnect', () => {
