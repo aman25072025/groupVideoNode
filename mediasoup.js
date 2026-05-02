@@ -38,7 +38,7 @@ const config = {
     listenIps: [
       {
         ip: '0.0.0.0',
-        announcedIp: process.env.ANNOUNCED_IP || 'groupvideonode.onrender.com'
+        announcedIp: process.env.ANNOUNCED_IP || null
       }
     ],
     enableUdp: false,   // ❌ disable
