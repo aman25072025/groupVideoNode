@@ -2,13 +2,7 @@ const mediasoup = require('mediasoup');
 
 const rtcMinPort = Number(process.env.MEDIASOUP_MIN_PORT || 40000);
 const rtcMaxPort = Number(process.env.MEDIASOUP_MAX_PORT || 49999);
-const listenIp = process.env.LISTEN_IP || '0.0.0.0';
 ANNOUNCED_IP = 'groupvideonode.onrender.com'
-
-const announcedIp = 'groupvideonode.onrender.com';
-const enableUdp = process.env.MEDIASOUP_ENABLE_UDP !== 'false';
-const enableTcp = process.env.MEDIASOUP_ENABLE_TCP !== 'false';
-const preferUdp = process.env.MEDIASOUP_PREFER_UDP !== 'false';
 
 const config = {
   worker: {
@@ -38,12 +32,12 @@ const config = {
     listenIps: [
       {
         ip: '0.0.0.0',
-        announcedIp: process.env.ANNOUNCED_IP || null
+        announcedIp: '103.79.170.130'
       }
     ],
-    enableUdp: false,   // ❌ disable
-    enableTcp: true,    // ✅ enable
-    preferUdp: false    // ❌ disable
+    enableUdp: true,
+    enableTcp: true,
+    preferUdp: true
   }
 };
 
