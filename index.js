@@ -52,7 +52,26 @@ io.on('connection', (socket) => {
 
   socket.on('get-router-rtp-capabilities', ({ roomId }, callback) => {
     const room = rooms.get(roomId);
-    callback(room?.router?.rtpCapabilities || {});
+    if (!room?.router?.rtpCapabilities) {
+      return callback({ error: 'Room not found' });
+    }
+    callback(room.router.rtpCapabilities);
+  });
+
+  socket.on('leave-room', ({ roomId, participantId }) => {
+    const room = rooms.get(roomId);
+    const participant = room?.participants.get(participantId);
+
+    if (!room || !participant || participant.socketId !== socket.id) return;
+
+    participant.producers.forEach((producer) => producer.close());
+    participant.consumers.forEach((consumer) => consumer.close());
+    participant.transports.forEach((transport) => transport.close());
+
+    room.participants.delete(participantId);
+    participants.delete(socket.id);
+    socket.leave(roomId);
+    socket.to(roomId).emit('participant-left', { participantId });
   });
 
   socket.on('join-room', ({ roomId, userName }) => {
@@ -92,7 +111,8 @@ io.on('connection', (socket) => {
       p.producers.forEach(prod => {
         list.push({
           producerId: prod.id,
-          participantId: pid
+          participantId: pid,
+          kind: prod.kind
         });
       });
     });
@@ -194,6 +214,8 @@ io.on('connection', (socket) => {
     });
 
     participant.consumers.set(consumer.id, consumer);
+
+    await consumer.resume();
 
     callback({
       id: consumer.id,
