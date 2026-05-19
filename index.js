@@ -28,6 +28,10 @@ const participants = new Map();
 let workers = [];
 let router;
 
+app.get('/test', (req, res) => {
+  res.json({ message: 'API is working!' });
+});
+
 async function initializeMediaSoup() {
   workers = await createWorkers();
   router = await createRouter(workers[0]);
